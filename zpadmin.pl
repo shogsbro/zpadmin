@@ -59,9 +59,9 @@ sub get_zp_health {
 }
 
 sub get_zp_status {
-# zpool status $pool_name
+# zpool status -v $pool_name
       my $pool_name = shift;
-      my $result = `zpool status $pool_name`;
+      my $result = `zpool status -v $pool_name`;
       chomp $result;
       return $result;
 }
