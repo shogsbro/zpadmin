@@ -8,18 +8,19 @@
 #  0,30 * * * * /pathtobin/zpadmin.pl
 #
 #  # ZPOOL WEEKLY SCRUB ->
-#  0 5 * * 0 /pathtobin/zpadmin.pl -scrub
+#  0 1 * * 1 /pathtobin/zpadmin.pl -scrub
 #
 #=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 use strict;
 use Time::localtime;
 use Getopt::Long;
-use Net::SMTP;
 use Sys::Hostname;
 
-my $log_path="/nfs/zpool_adm_log";
+my $log_path="/var/log/zpool_adm.log";
 my $hostname = hostname;
+my $mailfrom = "zfsadmin\@$hostname";
+my $mailto = "root";
 
 sub log_event {
       my $event = shift;
@@ -57,6 +58,14 @@ sub get_zp_health {
       return $result;
 }
 
+sub get_zp_status {
+# zpool status $pool_name
+      my $pool_name = shift;
+      my $result = `zpool status $pool_name`;
+      chomp $result;
+      return $result;
+}
+
 sub get_zp_scrub {
 }
 
@@ -86,30 +95,26 @@ sub scrub_pool {
 }
 
 sub mailme {
+      my $pool_name = shift;
+      my $pool_status = shift;
       my ($message) = @_;
-      my $mydomain = $hostname;
-      my $mailfrom = "admin\@$hostname";
-      my $mailto = "sysadmin\@wherewelive.com";
-      my $mailhost = "mailhost"; # switch to ip or real mail host
 
-      my $smtp = Net::SMTP->new($mailhost,
-                  Hello => $mydomain,
-                  Timeout => 30,
-                  Debug   => 0 );
-      $smtp->mail($mailfrom);
-      $smtp->recipient($mailto);
-      $smtp->data();
-      $smtp->datasend("To: $mailto\n");
-      $smtp->datasend("Subject: Zpool on $hostname requires sysadmin attention\n");
-      $smtp->datasend("\n");
-      $smtp->datasend("$message");
-      $smtp->dataend();
-      $smtp->quit;
+      #my $sendmail = "/bin/cat >/tmp/mailtest";
+      #my $reply_to = "Reply-to: $from";
+
+      my $sendmail = "/usr/sbin/sendmail -t";
+      open(SENDMAIL, "|$sendmail") or die "Cannot open $sendmail: $!";
+      print SENDMAIL "From: $mailfrom\n";
+      print SENDMAIL "To: $mailto\n";
+      print SENDMAIL "Subject: Zpool '$pool_name' on $hostname is $pool_status\n";
+      print SENDMAIL "Content-type: text/plain\n\n";
+      print SENDMAIL $message . "\n";
+      close(SENDMAIL)
 }
 
 #START PROCESS>>>
 if ( ! -f "/sbin/zpool") {
-      print "zpools not supported in this sun release.\n";
+      print "ZFS not installed on this system.\n";
       exit 1;
 }
 
@@ -130,7 +135,7 @@ sub zpcheck {
             if ( $health eq "ONLINE" ) {
                   print "zpool $pool status is $health, ok.\n" if(defined ($verbose));
                   #log_event("[STATUS] zpool $pool status is $health, ok.");
-		 		if(defined($scrub)) {
+                  if(defined($scrub)) {
                         print "Starting scrub of pool $pool..." if(defined ($verbose));
                         if (scrub_pool($pool)) {
                               print "error initiating scrub.\n" if(defined ($verbose));
@@ -144,16 +149,10 @@ sub zpcheck {
                   $health = "unknown" if (!$health);
                   print "Problem with zpool $pool detected, status is $health\n" if(defined($verbose));
                   log_event("[ERROR] Problem with zpool $pool detected, status is $health.");
-                  mailme("zpool $pool on host $hostname is status $health.  \n");
+                  mailme($pool, $health, get_zp_status($pool));
             }
       }
 }
-
-
-
-
-
-
 
 
 ##############################################################################
@@ -162,9 +161,8 @@ sub zpcheck {
 ### contents or the code enclosed. 
 ###
 ###
-###  Copyright Sun Microsystems, Inc. ALL RIGHTS RESERVED
+### Copyright 2008 Sun Microsystems, Inc. ALL RIGHTS RESERVED
 ### Use of this software is authorized pursuant to the
 ### terms of the license found at
-### http://www.sun.com/bigadmin/common/berkeley_license.jsp
+### http://www.sun.com/bigadmin/common/berkeley_license.html
 ##############################################################################
-
