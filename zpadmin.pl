@@ -19,7 +19,7 @@ use Sys::Hostname;
 
 my $log_path="/var/log/zpool_adm.log";
 my $hostname = hostname;
-my $mailfrom = "zfsadmin\@$hostname";
+my $mailfrom = "zfs\@$hostname";
 my $mailto = "root";
 
 sub log_event {
